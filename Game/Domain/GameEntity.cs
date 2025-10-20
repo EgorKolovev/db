@@ -1,13 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using MongoDB.Bson.Serialization.Attributes;
 
 namespace Game.Domain
 {
     public class GameEntity
     {
-        [BsonElement("players")]
         private readonly List<Player> players;
 
         public GameEntity(int turnsCount)
@@ -15,19 +13,13 @@ namespace Game.Domain
         {
         }
 
-        [BsonConstructor]
-        public GameEntity(
-            Guid id,
-            GameStatus status,
-            int turnsCount,
-            int currentTurnIndex,
-            List<Player> players)
+        public GameEntity(Guid id, GameStatus status, int turnsCount, int currentTurnIndex, List<Player> players)
         {
             Id = id;
             Status = status;
             TurnsCount = turnsCount;
             CurrentTurnIndex = currentTurnIndex;
-            this.players = players ?? new List<Player>();
+            this.players = players;
         }
 
         public Guid Id
@@ -37,16 +29,12 @@ namespace Game.Domain
             private set;
         }
 
-        [BsonIgnore]
         public IReadOnlyList<Player> Players => players.AsReadOnly();
 
-        [BsonElement("turnsCount")]
         public int TurnsCount { get; }
 
-        [BsonElement("currentTurnIndex")]
         public int CurrentTurnIndex { get; private set; }
 
-        [BsonElement("status")]
         public GameStatus Status { get; private set; }
 
         public void AddPlayer(UserEntity user)
@@ -87,46 +75,23 @@ namespace Game.Domain
 
         public GameTurnEntity FinishTurn()
         {
-            if (players.Count != 2)
-                throw new InvalidOperationException("Expected exactly two players to finish turn.");
-
-            Guid? winnerId = null;
-            for (var i = 0; i < players.Count; i++)
+            var winnerId = Guid.Empty;
+            for (int i = 0; i < 2; i++)
             {
-                var player = players[i];
-                var opponent = players[1 - i];
+                var player = Players[i];
+                var opponent = Players[1 - i];
                 if (!player.Decision.HasValue || !opponent.Decision.HasValue)
-                    throw new InvalidOperationException("All players must have decisions to finish the turn.");
+                    throw new InvalidOperationException();
                 if (player.Decision.Value.Beats(opponent.Decision.Value))
                 {
                     player.Score++;
                     winnerId = player.UserId;
                 }
             }
-
-            var turnIndex = CurrentTurnIndex;
-            var turnPlayers = players
-                .Select(player =>
-                {
-                    if (!player.Decision.HasValue)
-                        throw new InvalidOperationException("Missing decision when building turn snapshot.");
-                    return new GameTurnPlayer(
-                        player.UserId,
-                        player.Name,
-                        player.Decision.Value,
-                        player.Score);
-                })
-                .ToList();
-
-            var result = new GameTurnEntity(
-                Guid.NewGuid(),
-                Id,
-                turnIndex,
-                winnerId,
-                DateTime.UtcNow,
-                turnPlayers);
-
-            foreach (var player in players)
+            //TODO Заполнить все внутри GameTurnEntity, в том числе winnerId
+            var result = new GameTurnEntity();
+            // Это должно быть после создания GameTurnEntity
+            foreach (var player in Players)
                 player.Decision = null;
             CurrentTurnIndex++;
             if (CurrentTurnIndex == TurnsCount)

@@ -1,7 +1,6 @@
-﻿using System;
+using System;
 using System.Linq;
 using Game.Domain;
-using MongoDB.Driver;
 
 namespace ConsoleApp
 {
@@ -9,42 +8,17 @@ namespace ConsoleApp
     {
         private readonly IUserRepository userRepo;
         private readonly IGameRepository gameRepo;
-        private readonly IGameTurnRepository gameTurnRepo;
         private readonly Random random = new Random();
 
         private Program(string[] args)
         {
-            var connectionString = ResolveConnectionString(args);
-            var mongoUrl = MongoUrl.Create(connectionString);
-            var client = new MongoClient(mongoUrl);
-            var databaseName = !string.IsNullOrWhiteSpace(mongoUrl.DatabaseName)
-                ? mongoUrl.DatabaseName
-                : ResolveDatabaseName();
-            var database = client.GetDatabase(databaseName);
-
-            userRepo = new MongoUserRepository(database);
-            gameRepo = new MongoGameRepository(database);
-            gameTurnRepo = new MongoGameTurnRepository(database);
+            userRepo = new InMemoryUserRepository();
+            gameRepo = new InMemoryGameRepository();
         }
 
         public static void Main(string[] args)
         {
             new Program(args).RunMenuLoop();
-        }
-
-        private static string ResolveConnectionString(string[] args)
-        {
-            var cliConnection = args?.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a));
-            if (!string.IsNullOrWhiteSpace(cliConnection))
-                return cliConnection;
-
-            return Environment.GetEnvironmentVariable("PROJECT5100_MONGO_CONNECTION_STRING")
-                   ?? "mongodb://localhost:27017";
-        }
-
-        private static string ResolveDatabaseName()
-        {
-            return Environment.GetEnvironmentVariable("PROJECT5100_MONGO_DB_NAME") ?? "game";
         }
 
         private void RunMenuLoop()
@@ -151,8 +125,8 @@ namespace ConsoleApp
 
             if (game.HaveDecisionOfEveryPlayer)
             {
-                var turn = game.FinishTurn();
-                gameTurnRepo.Insert(turn);
+                // TODO: Сохранить информацию о прошедшем туре в IGameTurnRepository. Сформировать информацию о закончившемся туре внутри FinishTurn и вернуть её сюда.
+                game.FinishTurn();
             }
 
             ShowScore(game);
@@ -206,24 +180,8 @@ namespace ConsoleApp
         private void ShowScore(GameEntity game)
         {
             var players = game.Players;
+            // TODO: Показать информацию про 5 последних туров: кто как ходил и кто в итоге выиграл. Прочитать эту информацию из IGameTurnRepository
             Console.WriteLine($"Score: {players[0].Name} {players[0].Score} : {players[1].Score} {players[1].Name}");
-
-            if (game.Id == Guid.Empty)
-                return;
-
-            var recentTurns = gameTurnRepo.GetLastTurns(game.Id, 5);
-            if (recentTurns.Count == 0)
-                return;
-
-            Console.WriteLine("Last turns:");
-            foreach (var turn in recentTurns.OrderBy(t => t.TurnIndex))
-            {
-                var decisions = string.Join(", ", turn.Players.Select(p => $"{p.Name} -> {p.Decision}"));
-                var winner = turn.WinnerId.HasValue
-                    ? turn.Players.First(p => p.UserId == turn.WinnerId.Value).Name
-                    : "Draw";
-                Console.WriteLine($"#{turn.TurnIndex + 1}: {decisions} => {winner}");
-            }
         }
     }
 }
